@@ -1,5 +1,5 @@
 name: 'Mirror to Gitee'
-description: "Mirror a GitHub org's repos to a Gitee org via hub-mirror-action"
+description: "Mirror a GitHub org's repos to a Gitee org, in parallel, skipping repos already up to date (via funmirror)"
 inputs:
   github-org:
     description: 'Source GitHub organization'
@@ -8,38 +8,72 @@ inputs:
     description: 'Destination Gitee organization'
     required: true
   gitee-key:
-    description: 'Gitee RSA private key'
+    description: 'Gitee SSH private key, used to push mirrored refs'
     required: true
   gitee-token:
-    description: 'Gitee access token'
+    description: 'Gitee API access token, used to look up / create destination repos'
     required: true
   repo-names:
     description: 'Comma-separated repo names to mirror; if empty, mirrors every repo in github-org'
     required: false
     default: ''
   github-token:
-    description: 'Token used to list repos when repo-names is not provided'
+    description: 'Token used to list repos (when repo-names is empty) and to clone private repos'
     required: false
     default: ''
+  force:
+    description: 'Force-push mirrored refs, overwriting divergent history on the destination'
+    required: false
+    default: 'true'
+  workers:
+    description: 'Number of repos to mirror concurrently'
+    required: false
+    default: '8'
+outputs:
+  mirrored:
+    description: 'Number of repos actually mirrored (excludes skipped repos that were already up to date)'
+    value: ${{ steps.mirror.outputs.mirrored }}
+  total:
+    description: 'Number of repos attempted'
+    value: ${{ steps.mirror.outputs.total }}
 runs:
   using: composite
   steps:
-    - id: list
-      if: inputs.repo-names == ''
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install funmirror
+      shell: bash
+      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.1.1"
+
+    - id: mirror
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
+        GITEE_KEY: ${{ inputs.gitee-key }}
       run: |
         set -euo pipefail
-        names=$(gh api --paginate "orgs/${{ inputs.github-org }}/repos?type=all&per_page=100" --jq '.[].name' | paste -sd, -)
-        echo "names=$names" >> "$GITHUB_OUTPUT"
 
-    - uses: Yikun/hub-mirror-action@master
-      with:
-        src: github/${{ inputs.github-org }}
-        dst: gitee/${{ inputs.gitee-org }}
-        dst_key: ${{ inputs.gitee-key }}
-        dst_token: ${{ inputs.gitee-token }}
-        force_update: true
-        account_type: org
-        static_list: ${{ inputs.repo-names != '' && inputs.repo-names || steps.list.outputs.names }}
+        key_file="$RUNNER_TEMP/gitee_mirror_key"
+        printf '%s\n' "$GITEE_KEY" > "$key_file"
+        chmod 600 "$key_file"
+        mkdir -p "$HOME/.ssh"
+        ssh-keyscan -t rsa,ed25519 gitee.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+
+        force_flag="--force"
+        [[ "${{ inputs.force }}" == "true" ]] || force_flag="--no-force"
+
+        set +e
+        funmirror mirror \
+          --github-org "${{ inputs.github-org }}" \
+          --gitee-org "${{ inputs.gitee-org }}" \
+          --gitee-token "${{ inputs.gitee-token }}" \
+          --gitee-key-file "$key_file" \
+          --github-token "${{ inputs.github-token }}" \
+          --repo-names "${{ inputs.repo-names }}" \
+          --workers "${{ inputs.workers }}" \
+          $force_flag
+        status=$?
+        set -e
+
+        exit "$status"
