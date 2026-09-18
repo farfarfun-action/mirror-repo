@@ -1,0 +1,45 @@
+name: 'Mirror to Gitee'
+description: "Mirror a GitHub org's repos to a Gitee org via hub-mirror-action"
+inputs:
+  github-org:
+    description: 'Source GitHub organization'
+    required: true
+  gitee-org:
+    description: 'Destination Gitee organization'
+    required: true
+  gitee-key:
+    description: 'Gitee RSA private key'
+    required: true
+  gitee-token:
+    description: 'Gitee access token'
+    required: true
+  repo-names:
+    description: 'Comma-separated repo names to mirror; if empty, mirrors every repo in github-org'
+    required: false
+    default: ''
+  github-token:
+    description: 'Token used to list repos when repo-names is not provided'
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - id: list
+      if: inputs.repo-names == ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        names=$(gh api --paginate "orgs/${{ inputs.github-org }}/repos?type=all&per_page=100" --jq '.[].name' | paste -sd, -)
+        echo "names=$names" >> "$GITHUB_OUTPUT"
+
+    - uses: Yikun/hub-mirror-action@master
+      with:
+        src: github/${{ inputs.github-org }}
+        dst: gitee/${{ inputs.gitee-org }}
+        dst_key: ${{ inputs.gitee-key }}
+        dst_token: ${{ inputs.gitee-token }}
+        force_update: true
+        account_type: org
+        static_list: ${{ inputs.repo-names != '' && inputs.repo-names || steps.list.outputs.names }}
