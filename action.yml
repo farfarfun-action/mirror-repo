@@ -1,24 +1,38 @@
-name: 'Mirror to Gitee'
-description: "Mirror a GitHub org's repos to a Gitee org, in parallel, skipping repos already up to date (via funmirror)"
+name: 'Mirror repo'
+description: "Mirror an org's repos from one hosting platform to another, in parallel, skipping repos already up to date (via funmirror)"
 inputs:
-  github-org:
-    description: 'Source GitHub organization'
+  src:
+    description: 'Source, format: <platform>/<org>. platform is one of github/gitee/gitlab/gitcode. e.g. github/kunpengcompute'
     required: true
-  gitee-org:
-    description: 'Destination Gitee organization'
+  dst:
+    description: 'Destination, format: <platform>/<org>. Same platform values as src.'
     required: true
-  gitee-key:
-    description: 'Gitee SSH private key, used to push mirrored refs'
-    required: true
-  gitee-token:
-    description: 'Gitee API access token, used to look up / create destination repos'
-    required: true
-  repo-names:
-    description: 'Comma-separated repo names to mirror; if empty, mirrors every repo in github-org'
+  src_token:
+    description: 'API token for the source platform (list repos, private repo clone)'
     required: false
     default: ''
-  github-token:
-    description: 'Token used to list repos (when repo-names is empty) and to clone private repos'
+  dst_token:
+    description: 'API token for the destination platform (look up / create repos)'
+    required: false
+    default: ''
+  src_key:
+    description: 'SSH private key for the source platform, only required when the src platform is gitee'
+    required: false
+    default: ''
+  dst_key:
+    description: 'SSH private key for the destination platform, only required when the dst platform is gitee'
+    required: false
+    default: ''
+  src_endpoint:
+    description: 'Self-hosted endpoint for the source platform, only used when the src platform is gitlab'
+    required: false
+    default: ''
+  dst_endpoint:
+    description: 'Self-hosted endpoint for the destination platform, only used when the dst platform is gitlab'
+    required: false
+    default: ''
+  repo-names:
+    description: 'Comma-separated repo names to mirror; if empty, mirrors every repo in src'
     required: false
     default: ''
   force:
@@ -33,6 +47,12 @@ outputs:
   mirrored:
     description: 'Number of repos actually mirrored (excludes skipped repos that were already up to date)'
     value: ${{ steps.mirror.outputs.mirrored }}
+  skipped:
+    description: 'Number of repos skipped because they were already up to date'
+    value: ${{ steps.mirror.outputs.skipped }}
+  failed:
+    description: 'Number of repos that failed to mirror'
+    value: ${{ steps.mirror.outputs.failed }}
   total:
     description: 'Number of repos attempted'
     value: ${{ steps.mirror.outputs.total }}
@@ -45,31 +65,53 @@ runs:
 
     - name: Install funmirror
       shell: bash
-      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.1.7"
+      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.2.0"
 
     - id: mirror
       shell: bash
       env:
-        GITEE_KEY: ${{ inputs.gitee-key }}
+        SRC: ${{ inputs.src }}
+        DST: ${{ inputs.dst }}
+        SRC_KEY: ${{ inputs.src_key }}
+        DST_KEY: ${{ inputs.dst_key }}
       run: |
         set -euo pipefail
 
-        key_file="$RUNNER_TEMP/gitee_mirror_key"
-        printf '%s\n' "$GITEE_KEY" > "$key_file"
-        chmod 600 "$key_file"
-        mkdir -p "$HOME/.ssh"
-        ssh-keyscan -t rsa,ed25519 gitee.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+        src_platform="${SRC%%/*}"
+        src_org="${SRC#*/}"
+        dst_platform="${DST%%/*}"
+        dst_org="${DST#*/}"
+
+        src_key_file=""
+        dst_key_file=""
+
+        if [[ "$src_platform" == "gitee" || "$dst_platform" == "gitee" ]]; then
+          mkdir -p "$HOME/.ssh"
+          ssh-keyscan -t rsa,ed25519 gitee.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+        fi
+
+        if [[ -n "$SRC_KEY" ]]; then
+          src_key_file="$RUNNER_TEMP/mirror_src_key"
+          printf '%s\n' "$SRC_KEY" > "$src_key_file"
+          chmod 600 "$src_key_file"
+        fi
+
+        if [[ -n "$DST_KEY" ]]; then
+          dst_key_file="$RUNNER_TEMP/mirror_dst_key"
+          printf '%s\n' "$DST_KEY" > "$dst_key_file"
+          chmod 600 "$dst_key_file"
+        fi
 
         force_flag="--force"
         [[ "${{ inputs.force }}" == "true" ]] || force_flag="--no-force"
 
         set +e
         funmirror mirror \
-          --github-org "${{ inputs.github-org }}" \
-          --gitee-org "${{ inputs.gitee-org }}" \
-          --gitee-token "${{ inputs.gitee-token }}" \
-          --gitee-key-file "$key_file" \
-          --github-token "${{ inputs.github-token }}" \
+          --src-platform "$src_platform" --dst-platform "$dst_platform" \
+          --src-org "$src_org" --dst-org "$dst_org" \
+          --src-token "${{ inputs.src_token }}" --dst-token "${{ inputs.dst_token }}" \
+          --src-key-file "$src_key_file" --dst-key-file "$dst_key_file" \
+          --src-endpoint "${{ inputs.src_endpoint }}" --dst-endpoint "${{ inputs.dst_endpoint }}" \
           --repo-names "${{ inputs.repo-names }}" \
           --workers "${{ inputs.workers }}" \
           $force_flag
