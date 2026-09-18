@@ -45,7 +45,7 @@ runs:
 
     - name: Install funmirror
       shell: bash
-      run: pip install --quiet "funmirror==0.1.4"
+      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.1.5"
 
     - id: mirror
       shell: bash
