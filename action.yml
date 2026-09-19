@@ -43,6 +43,23 @@ inputs:
     description: 'Number of repos to mirror concurrently'
     required: false
     default: '8'
+  state-file:
+    description: >-
+      Path (relative to the workspace) to a JSON file mapping repo name to
+      last-synced source branch sha. Read at the start and rewritten at the
+      end with every processed repo's confirmed sha. Leave empty to disable
+      state tracking. Persisting this file across runs (e.g. committing it
+      back to the calling repo) is the caller's responsibility.
+    required: false
+    default: ''
+  incremental:
+    description: >-
+      When "true" and state-file is set, skip repos whose current source sha
+      still matches state-file without ever querying the destination
+      platform. Leave "false" for a full sync that always checks the
+      destination and refreshes state-file from the confirmed results.
+    required: false
+    default: 'false'
 outputs:
   mirrored:
     description: 'Number of repos actually mirrored (excludes skipped repos that were already up to date)'
@@ -65,7 +82,7 @@ runs:
 
     - name: Install funmirror
       shell: bash
-      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.2.0"
+      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.3.0"
 
     - id: mirror
       shell: bash
@@ -105,6 +122,9 @@ runs:
         force_flag="--force"
         [[ "${{ inputs.force }}" == "true" ]] || force_flag="--no-force"
 
+        incremental_flag=""
+        [[ "${{ inputs.incremental }}" == "true" ]] && incremental_flag="--incremental"
+
         set +e
         funmirror mirror \
           --src-platform "$src_platform" --dst-platform "$dst_platform" \
@@ -114,7 +134,8 @@ runs:
           --src-endpoint "${{ inputs.src_endpoint }}" --dst-endpoint "${{ inputs.dst_endpoint }}" \
           --repo-names "${{ inputs.repo-names }}" \
           --workers "${{ inputs.workers }}" \
-          $force_flag
+          --state-file "${{ inputs.state-file }}" \
+          $force_flag $incremental_flag
         status=$?
         set -e
 

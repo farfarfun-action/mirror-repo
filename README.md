@@ -26,6 +26,8 @@ If `repo-names` is not supplied, the action lists every repo in `src` itself
 | `repo-names` | no | (all repos) | Comma-separated repo names to mirror |
 | `force` | no | `true` | Force-push mirrored refs, overwriting divergent history on the destination |
 | `workers` | no | `8` | Number of repos to mirror concurrently |
+| `state-file` | no | — | Path (relative to the workspace) to a JSON file mapping repo name to last-synced source sha; read at the start, rewritten at the end. Persisting it across runs (e.g. committing it back to the calling repo) is the caller's job |
+| `incremental` | no | `false` | When `true` and `state-file` is set, skip repos whose current source sha still matches `state-file` without ever querying the destination. `false` always checks the destination for real and refreshes `state-file` from the confirmed results |
 
 ## Outputs
 
@@ -49,4 +51,33 @@ If `repo-names` is not supplied, the action lists every repo in `src` itself
     # Optional: skip auto-discovery by passing repo names directly,
     # e.g. from farfarfun-action/sync-forks's `all-repo-names` output.
     repo-names: ${{ steps.sync.outputs.all-repo-names }}
+```
+
+### Incremental runs against a throttled destination
+
+If the destination platform (e.g. Gitee) rate-limits or WAF-blocks under
+load, run this action frequently with `incremental: true`, and periodically
+(e.g. daily) with `incremental: false` to self-heal any drift. The caller
+owns checking out and committing `state-file` back to its own repo — this
+action only reads and rewrites the local file:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: farfarfun-action/mirror-repo@v1
+  with:
+    src: github/my-org
+    dst: gitee/my-org
+    dst_key: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
+    dst_token: ${{ secrets.GITEE_TOKEN }}
+    state-file: .mirror-state/gitee.json
+    incremental: 'true'   # 'false' on the periodic full-sync schedule
+    workers: '2'          # keep low on the full-sync schedule
+- name: Persist mirror state
+  if: always()
+  run: |
+    git config user.name 'github-actions[bot]'
+    git config user.email 'github-actions[bot]@users.noreply.github.com'
+    git add .mirror-state/gitee.json
+    git diff --cached --quiet || git commit -m 'chore: update Gitee mirror state [skip ci]'
+    git push
 ```
