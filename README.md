@@ -25,9 +25,10 @@ If `repo-names` is not supplied, the action lists every repo in `src` itself
 | `dst_endpoint` | no | — | Self-hosted endpoint for the destination platform, only used when the `dst` platform is `gitlab` |
 | `repo-names` | no | (all repos) | Comma-separated repo names to mirror |
 | `force` | no | `true` | Force-push mirrored refs, overwriting divergent history on the destination |
-| `workers` | no | `8` | Number of repos to mirror concurrently |
-| `state-file` | no | — | Path (relative to the workspace) to a JSON file mapping repo name to last-synced source sha; read at the start, rewritten at the end. Persisting it across runs (e.g. committing it back to the calling repo) is the caller's job |
-| `incremental` | no | `false` | When `true` and `state-file` is set, skip repos whose current source sha still matches `state-file` without ever querying the destination. `false` always checks the destination for real and refreshes `state-file` from the confirmed results |
+| `workers` | no | `8` | Number of repos to mirror concurrently (clone+push phase) |
+| `detect-workers` | no | `max(workers*4, 16)` | Concurrency for the read-only commit-id detection phase that runs before clone+push. Keep `workers` low to protect a rate-limited destination while detection still runs fast, since it never touches git |
+| `state-file` | no | — | Path (relative to the workspace) to a JSON file, namespaced by `<src>::<dst>`, mapping repo name to `{src_sha, dst_sha}`; read at the start, rewritten at the end. Persisting it across runs (e.g. committing it back to the calling repo) is the caller's job |
+| `incremental` | no | `false` | When `true` and `state-file` is set, only the source platform's commit sha is queried; a repo whose sha still matches `state-file` is skipped without ever querying the destination. `false` (full sync) queries both source and destination for every repo, ignores `state-file` for the decision, and refreshes it from the confirmed results — self-healing any drift |
 
 ## Outputs
 
