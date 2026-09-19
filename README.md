@@ -23,7 +23,7 @@ All of the actual mirroring logic lives in that package:
 - **Incremental + full sync** — see `incremental` below; full sync
   self-heals any drift an incremental run left behind.
 
-<img src="docs/architecture.svg" alt="funmirror / mirror-repo pipeline architecture" width="100%">
+<img src="docs/architecture.png" alt="funmirror / mirror-repo pipeline architecture" width="100%">
 
 ## Inputs
 
