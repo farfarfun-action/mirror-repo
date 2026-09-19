@@ -1,15 +1,29 @@
 # mirror-repo
 
 Mirror all (or a given list of) repos from one hosting platform's org to
-another's — GitHub, Gitee, GitLab or GitCode, in any src/dst combination. A
-thin wrapper around
-[`farfarfun/funmirror`](https://github.com/farfarfun/funmirror), which
-mirrors repos in parallel and skips any repo whose default branch already
-has the same latest commit on both sides — no third-party mirror action
-dependency.
+another's — GitHub, Gitee, GitLab or GitCode, in any src/dst combination.
 
 If `repo-names` is not supplied, the action lists every repo in `src` itself
 (requires `src_token`).
+
+## Built on funmirror
+
+This action is a thin GitHub Actions wrapper: it parses `src`/`dst`, stages
+any SSH key the destination needs, `pip install`s
+[`farfarfun/funmirror`](https://github.com/farfarfun/funmirror), and shells
+out to its `funmirror mirror` CLI — no third-party mirror action dependency.
+All of the actual mirroring logic lives in that package:
+
+- **Two-phase pipeline** — a cheap, read-only *detect* phase checks every
+  repo's commit id at high concurrency (`detect-workers`); only repos that
+  actually differ move on to the heavier *sync* phase (`workers`, kept much
+  lower to avoid overwhelming a rate-limited destination like Gitee).
+- **Skip-if-unchanged** — a repo whose source and destination default branch
+  already share the same latest commit is skipped without cloning anything.
+- **Incremental + full sync** — see `incremental` below; full sync
+  self-heals any drift an incremental run left behind.
+
+<img src="docs/architecture.svg" alt="funmirror / mirror-repo pipeline architecture" width="100%">
 
 ## Inputs
 
