@@ -22,6 +22,8 @@ All of the actual mirroring logic lives in that package:
   already share the same latest commit is skipped without cloning anything.
 - **Incremental + full sync** — see `incremental` below; full sync
   self-heals any drift an incremental run left behind.
+- **Release mirroring** — opt-in via `sync-releases`, covering the files
+  attached to each release, not just git refs.
 
 <img src="docs/architecture.png" alt="funmirror / mirror-repo pipeline architecture" width="100%">
 
@@ -43,6 +45,8 @@ All of the actual mirroring logic lives in that package:
 | `detect-workers` | no | `max(workers*4, 16)` | Concurrency for the read-only commit-id detection phase that runs before clone+push. Keep `workers` low to protect a rate-limited destination while detection still runs fast, since it never touches git |
 | `state-file` | no | — | Path (relative to the workspace) to a JSON file, namespaced by `<src>::<dst>`, mapping repo name to `{src_sha, dst_sha}`; read at the start, rewritten at the end. Persisting it across runs (e.g. committing it back to the calling repo) is the caller's job |
 | `incremental` | no | `false` | When `true` and `state-file` is set, only the source platform's commit sha is queried; a repo whose sha still matches `state-file` is skipped without ever querying the destination. `false` (full sync) queries both source and destination for every repo, ignores `state-file` for the decision, and refreshes it from the confirmed results — self-healing any drift |
+| `sync-releases` | no | `false` | Also mirror releases and the files attached to them, in a pass that runs after the git push. Needs `dst_token`. Currently `github` → `gitee` only. See below |
+| `release-limit` | no | (all) | Only mirror the N most recent releases per repo |
 
 ## Outputs
 
@@ -96,3 +100,43 @@ action only reads and rewrites the local file:
     git diff --cached --quiet || git commit -m 'chore: update Gitee mirror state [skip ci]'
     git push
 ```
+
+### Mirroring releases and their files
+
+A git mirror copies refs. It does not copy releases, and it does not copy
+the binaries attached to them — which for a tool distributed as a prebuilt
+binary is the only part users actually need. `sync-releases: 'true'` adds a
+pass after the push that creates any missing release on the destination (by
+tag) and uploads the attachments it's missing:
+
+```yaml
+- uses: farfarfun-action/mirror-repo@v1
+  with:
+    src: github/${{ github.repository_owner }}
+    dst: gitee/${{ github.repository_owner }}
+    src_token: ${{ secrets.GITHUB_TOKEN }}
+    dst_key: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
+    dst_token: ${{ secrets.GITEE_TOKEN }}
+    repo-names: ${{ github.event.repository.name }}
+    sync-releases: 'true'
+    release-limit: '5'
+```
+
+`dst_token` is not optional here: the SSH key covers git, not the REST API
+that creates releases and uploads files.
+
+Both passes are idempotent and diff-based — a release already there is
+matched by tag and left alone, an attachment already there is matched by
+name and only re-uploaded if its size disagrees. Re-running costs API calls,
+not bandwidth.
+
+Two things to know before turning it on:
+
+- **Every selected repo pays a release listing on both sides, every run,
+  including the unchanged ones.** Publishing a release moves a tag, not the
+  default branch, so a repo whose commits are identical can still be missing
+  its newest release — skipping those on the commit sha alone would miss
+  exactly what this switch is for. Those repos still skip the clone+push;
+  only the release diff runs.
+- **`release-limit` is worth setting on the first run.** Without it, a repo
+  with a long history of large binaries moves all of it at once.

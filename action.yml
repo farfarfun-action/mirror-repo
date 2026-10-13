@@ -1,5 +1,5 @@
 name: 'Mirror repo'
-description: "Mirror an org's repos from one hosting platform to another, in parallel, skipping repos already up to date (via funmirror)"
+description: "Mirror an org's repos (git refs, optionally releases and their files) from one hosting platform to another, in parallel, skipping repos already up to date (via funmirror)"
 inputs:
   src:
     description: 'Source, format: <platform>/<org>. platform is one of github/gitee/gitlab/gitcode. e.g. github/kunpengcompute'
@@ -68,6 +68,25 @@ inputs:
       destination and refreshes state-file from the confirmed results.
     required: false
     default: 'false'
+  sync-releases:
+    description: >-
+      When "true", also mirror releases and the files attached to them, in a
+      pass that runs after the git push. Needs dst_token (the SSH key only
+      covers git, not the REST API). Currently github -> gitee only; any
+      other pair fails up front. Note that this makes every selected repo
+      pay a release listing on both sides every run, including repos whose
+      commits are unchanged -- publishing a release moves a tag, not the
+      default branch, so skipping those on the commit sha alone would miss
+      exactly what this switch is for.
+    required: false
+    default: 'false'
+  release-limit:
+    description: >-
+      Only mirror the N most recent releases per repo. Empty or "0" means all
+      of them, which on a repo with a long history of large binaries makes
+      the first run move all of it.
+    required: false
+    default: ''
 outputs:
   mirrored:
     description: 'Number of repos actually mirrored (excludes skipped repos that were already up to date)'
@@ -90,7 +109,7 @@ runs:
 
     - name: Install funmirror
       shell: bash
-      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.4.0"
+      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.5.0"
 
     - id: mirror
       shell: bash
@@ -133,8 +152,14 @@ runs:
         incremental_flag=""
         [[ "${{ inputs.incremental }}" == "true" ]] && incremental_flag="--incremental"
 
+        releases_flag="--no-sync-releases"
+        [[ "${{ inputs.sync-releases }}" == "true" ]] && releases_flag="--sync-releases"
+
         detect_workers_args=()
         [[ -n "${{ inputs.detect-workers }}" ]] && detect_workers_args=(--detect-workers "${{ inputs.detect-workers }}")
+
+        release_limit_args=()
+        [[ -n "${{ inputs.release-limit }}" ]] && release_limit_args=(--release-limit "${{ inputs.release-limit }}")
 
         set +e
         funmirror mirror \
@@ -146,8 +171,9 @@ runs:
           --repo-names "${{ inputs.repo-names }}" \
           --workers "${{ inputs.workers }}" \
           "${detect_workers_args[@]}" \
+          "${release_limit_args[@]}" \
           --state-file "${{ inputs.state-file }}" \
-          $force_flag $incremental_flag
+          $force_flag $incremental_flag $releases_flag
         status=$?
         set -e
 
