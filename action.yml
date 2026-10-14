@@ -123,6 +123,11 @@ runs:
         # trading a few seconds for one more thing that can fail to download
         # is a bad swap. So if the runner image doesn't ship uv, use pip and
         # move on.
+        #
+        # As of 2026-10-14 ubuntu-latest does not ship it, so in practice this
+        # always takes the pip branch and costs ~8s. Kept anyway: it's free
+        # when the image does start carrying uv, and the fallback is the path
+        # that was already there.
         if command -v uv >/dev/null 2>&1; then
           uv pip install --system --quiet "$PKG"
         else

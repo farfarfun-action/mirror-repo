@@ -64,8 +64,8 @@ All of the actual mirroring logic lives in that package:
 > blip reaching `gitee.com:22` kills the whole run with an `##[error]` and no
 > explanation. `v1` was left where it is on purpose rather than moved, so
 > anything still on it keeps getting the old behaviour. Use `@v1.2.0`, which
-> also carries the funmirror release that took a 139-repo full sync from ~173s
-> down to the twenties.
+> also carries the funmirror release that took the detect phase of a ~130-repo
+> full sync from ~173s down to ~66s (whole job 193s → 131s, measured).
 
 ```yaml
 - name: Mirror to Gitee
