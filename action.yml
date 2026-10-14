@@ -131,7 +131,41 @@ runs:
 
         if [[ "$src_platform" == "gitee" || "$dst_platform" == "gitee" ]]; then
           mkdir -p "$HOME/.ssh"
-          ssh-keyscan -t rsa,ed25519 gitee.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          # 重试 + 留话。这一行原本是 `ssh-keyscan ... >> known_hosts 2>/dev/null`，
+          # 连不上时 ssh-keyscan 等满 5 秒超时再 exit 1，`set -e` 当场结束整步，而
+          # 2>/dev/null 把唯一的线索也扔了——日志里只剩一个没有上文的 ##[error]。
+          # 一次到 gitee.com:22 的瞬断就能让一百多个仓库整轮不动且查不出原因，
+          # 2026-10-13 15:57 那轮就是这么没的（步骤耗时 6.017s = 5s 超时 + 启动）。
+          #
+          # 另外不能直接 `>>`：keyscan 失败时输出为空，空内容追加进去一声不响，
+          # 真正的报错要等到后面每个仓库 push 时才以 host key 验证失败的形式冒出来。
+          # 先落临时文件、确认非空再追加。
+          keyscan_out="$RUNNER_TEMP/gitee_hostkeys"
+          keyscan_err="$RUNNER_TEMP/gitee_keyscan.err"
+          # 超时的那一路 ssh-keyscan 什么都不往 stderr 写——而超时恰恰是最常见的
+          # 失败形态，照抄 stderr 等于还是没有线索，所以空输出要自己说明。
+          why() {
+            if [[ -s "$keyscan_err" ]]; then
+              sed 's/^/  ssh-keyscan: /' "$keyscan_err" >&2
+            else
+              echo "  ssh-keyscan: 无输出，按 -T 10 判定为连接超时（gitee.com:22 不可达）" >&2
+            fi
+          }
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -t rsa,ed25519 gitee.com > "$keyscan_out" 2> "$keyscan_err" \
+               && [[ -s "$keyscan_out" ]]; then
+              cat "$keyscan_out" >> "$HOME/.ssh/known_hosts"
+              break
+            fi
+            if [[ "$attempt" == 3 ]]; then
+              echo "::error::取不到 gitee.com 的 host key，三次都失败。没有它后面每个仓库的 push 都会在 host key 验证上失败，这里直接停。"
+              why
+              exit 1
+            fi
+            echo "::warning::第 $attempt 次取 gitee.com host key 失败，$((attempt * 5)) 秒后重试"
+            why
+            sleep $((attempt * 5))
+          done
         fi
 
         if [[ -n "$SRC_KEY" ]]; then
