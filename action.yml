@@ -109,7 +109,26 @@ runs:
 
     - name: Install funmirror
       shell: bash
-      run: pip install --quiet "git+https://github.com/farfarfun/funmirror.git@v0.5.1"
+      run: |
+        set -euo pipefail
+        PKG="git+https://github.com/farfarfun/funmirror.git@v0.6.0"
+
+        # uv when it's there, pip when it isn't. Nearly all of `pip install
+        # git+...` is PEP 517 build isolation — standing up a throwaway venv
+        # and putting hatchling in it — plus resolving four dependencies one
+        # after another; uv does the same work in a fraction of the time.
+        #
+        # Not worth fetching uv over the network to get that, though: this
+        # action exists because reaching the far side is unreliable, and
+        # trading a few seconds for one more thing that can fail to download
+        # is a bad swap. So if the runner image doesn't ship uv, use pip and
+        # move on.
+        if command -v uv >/dev/null 2>&1; then
+          uv pip install --system --quiet "$PKG"
+        else
+          echo "uv not on this runner, falling back to pip"
+          pip install --quiet "$PKG"
+        fi
 
     - id: mirror
       shell: bash

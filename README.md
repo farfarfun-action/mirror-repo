@@ -63,11 +63,13 @@ All of the actual mirroring logic lives in that package:
 > one commit before the `ssh-keyscan` fix in `v1.1.0` — on that version a single
 > blip reaching `gitee.com:22` kills the whole run with an `##[error]` and no
 > explanation. `v1` was left where it is on purpose rather than moved, so
-> anything still on it keeps getting the old behaviour. Use `@v1.1.0`.
+> anything still on it keeps getting the old behaviour. Use `@v1.2.0`, which
+> also carries the funmirror release that took a 139-repo full sync from ~173s
+> down to the twenties.
 
 ```yaml
 - name: Mirror to Gitee
-  uses: farfarfun-action/mirror-repo@v1.1.0
+  uses: farfarfun-action/mirror-repo@v1.2.0
   with:
     src: github/${{ github.repository_owner }}
     dst: gitee/farfarfun-skills
@@ -88,7 +90,7 @@ action only reads and rewrites the local file:
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: farfarfun-action/mirror-repo@v1.1.0
+- uses: farfarfun-action/mirror-repo@v1.2.0
   with:
     src: github/my-org
     dst: gitee/my-org
@@ -116,7 +118,7 @@ pass after the push that creates any missing release on the destination (by
 tag) and uploads the attachments it's missing:
 
 ```yaml
-- uses: farfarfun-action/mirror-repo@v1.1.0
+- uses: farfarfun-action/mirror-repo@v1.2.0
   with:
     src: github/${{ github.repository_owner }}
     dst: gitee/${{ github.repository_owner }}
