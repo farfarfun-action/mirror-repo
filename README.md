@@ -158,3 +158,5 @@ Two things to know before turning it on:
 
 - 🏠 组织主页：<https://github.com/farfarfun-action>
 - 📧 联系：farfarfun@qq.com
+
+本项目基于 [MIT](LICENSE) 协议开源。
