@@ -148,3 +148,13 @@ Two things to know before turning it on:
   only the release diff runs.
 - **`release-limit` is worth setting on the first run.** Without it, a repo
   with a long history of large binaries moves all of it at once.
+
+---
+
+## 关于 farfarfun-action
+
+[farfarfun](https://github.com/farfarfun) 的 GitHub Action 产品线：把组织级的仓库维护
+动作（fork 批量同步、跨平台仓库镜像）封装成可直接复用的 Action。
+
+- 🏠 组织主页：<https://github.com/farfarfun-action>
+- 📧 联系：farfarfun@qq.com
